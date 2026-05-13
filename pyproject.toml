@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 keywords = ["code-analysis", "ast", "code-structure", "outline", "call-graph"]
-dependencies = []
+dependencies = ["pathspec>=0.12"]
 
 [project.urls]
 Repository = "https://github.com/wenxin/codetre"

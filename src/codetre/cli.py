@@ -29,6 +29,8 @@ def main():
                         help="Glob pattern to exclude files (can be repeated)")
     parser.add_argument("--threads", type=int, default=0,
                         help="Number of worker threads (0 = auto, 1 = sequential)")
+    parser.add_argument("--no-ignore", action="store_true",
+                        help="Do not skip common directories (.git, __pycache__, node_modules, etc.)")
     parser.add_argument("--quiet", action="store_true",
                         help="Suppress non-output messages")
     parser.add_argument("--version", action="store_true",
@@ -39,7 +41,7 @@ def main():
         print(f"codetre {VERSION}")
         sys.exit(0)
 
-    results = scan_path(args.path, args.exclude, args.threads)
+    results = scan_path(args.path, args.exclude, args.threads, args.no_ignore)
 
     if not results:
         if not args.quiet:

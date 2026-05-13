@@ -8,9 +8,33 @@ from pathlib import PurePath
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
+try:
+    import pathspec
+except ImportError:
+    pathspec = None
+
 from .patterns import LANG_MAP, DEF_PATTERNS, CALL_PATTERNS
 
 SG_TIMEOUT = 30
+
+_DEFAULT_IGNORE_DIRS = frozenset({
+    '.git', '__pycache__', 'node_modules', '.venv', 'venv',
+    '.tox', '.egg-info', '.mypy_cache', '.pytest_cache',
+    'dist', 'build', 'target', '.idea', '.vscode',
+})
+
+
+def _load_gitignore(dirpath: str):
+    if not pathspec:
+        return None
+    path = os.path.join(dirpath, '.gitignore')
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding='utf-8') as f:
+            return pathspec.PathSpec.from_lines('gitwildmatch', f)
+    except Exception:
+        return None
 
 
 def check_sg() -> str | None:
@@ -126,19 +150,39 @@ def scan_dir(
     dirpath: str,
     exclude_patterns: list[str] | None = None,
     threads: int = 0,
+    no_ignore: bool = False,
 ) -> list[FileResult]:
     exclude = exclude_patterns or []
+    ignore_spec = _load_gitignore(dirpath) if not no_ignore else None
     files: list[str] = []
     for root, dirs, fnames in os.walk(dirpath):
         dirs.sort()
+
+        if not no_ignore:
+            dirs[:] = [d for d in dirs if d not in _DEFAULT_IGNORE_DIRS]
+
+        if not no_ignore and ignore_spec:
+            dirs[:] = [d for d in dirs
+                       if not ignore_spec.match_file(
+                           os.path.relpath(os.path.join(root, d), dirpath).replace("\\", "/") + "/_")]
+
+        if exclude:
+            dirs[:] = [d for d in dirs
+                       if not any(PurePath(d).match(pat) for pat in exclude)]
+
         for fname in sorted(fnames):
             path = os.path.join(root, fname)
             ext = os.path.splitext(path)[1]
             if ext not in LANG_MAP:
                 continue
-            rel = os.path.relpath(path, dirpath)
-            if any(PurePath(rel).match(pat) for pat in exclude):
-                continue
+            if not no_ignore and ignore_spec:
+                rel = os.path.relpath(path, dirpath).replace("\\", "/")
+                if ignore_spec.match_file(rel):
+                    continue
+            if exclude:
+                rel = os.path.relpath(path, dirpath).replace("\\", "/")
+                if any(PurePath(rel).match(pat) for pat in exclude):
+                    continue
             files.append(path)
 
     if not files:
@@ -172,12 +216,13 @@ def scan_path(
     path: str,
     exclude_patterns: list[str] | None = None,
     threads: int = 0,
+    no_ignore: bool = False,
 ) -> list[FileResult]:
     if os.path.isfile(path):
         r = scan_file(path)
         return [r] if r else []
     if os.path.isdir(path):
-        return scan_dir(path, exclude_patterns, threads)
+        return scan_dir(path, exclude_patterns, threads, no_ignore)
     return []
 
 
