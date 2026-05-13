@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "codetre"
+version = "0.1.0"
+description = "AST-based code structure outline tool — generate hierarchical symbol maps with call relationships"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "wenxin" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["code-analysis", "ast", "code-structure", "outline", "call-graph"]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/wenxin/codetre"
+BugTracker = "https://github.com/wenxin/codetre/issues"
+
+[project.scripts]
+codetre = "codetre.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
