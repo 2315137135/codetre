@@ -7,7 +7,7 @@ import sys
 
 from .core import check_sg, quiet as core_quiet, scan_path, format_result
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 
 
 def main():
