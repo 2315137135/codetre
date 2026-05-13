@@ -3,30 +3,36 @@
 _GET_NAME = lambda m: m['metaVariables']['single']['NAME']['text'].split('::')[-1].split('.')[-1]
 _GET_OBJ_METHOD = lambda m: m['metaVariables']['single']['NAME']['text']
 
+_COMMON_CALL = [('$NAME($$$ARGS)', _GET_NAME), ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)]
+_COMMON_CALL_NO_OBJ = [('$NAME($$$ARGS)', _GET_NAME)]
+
 CALL_PATTERNS = {
-    'python':      [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'javascript':  [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'typescript':  [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'tsx':         [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'cpp':         [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD),
-                    ('$NAME($$$ARGS);', _GET_NAME),          ('$VAR = $NAME($$$ARGS)', _GET_NAME),
+    'python':      _COMMON_CALL,
+    'javascript':  _COMMON_CALL,
+    'typescript':  _COMMON_CALL,
+    'tsx':         _COMMON_CALL,
+    'cpp':         [*_COMMON_CALL,
+                    ('$NAME($$$ARGS);', _GET_NAME),
+                    ('$VAR = $NAME($$$ARGS)', _GET_NAME),
                     ('$TYPE $VAR = $NAME($$$ARGS)', _GET_NAME)],
-    'c':           [('$NAME($$$ARGS)', _GET_NAME),          ('$NAME($$$ARGS);', _GET_NAME),
-                    ('$VAR = $NAME($$$ARGS)', _GET_NAME),    ('$TYPE $VAR = $NAME($$$ARGS)', _GET_NAME)],
-    'go':          [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'rust':        [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'ruby':        [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'java':        [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'kotlin':      [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'scala':       [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'csharp':      [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'php':         [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'swift':       [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'lua':         [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
-    'bash':        [('$NAME($$$ARGS)', _GET_NAME)],
-    'elixir':      [('$NAME($$$ARGS)', _GET_NAME)],
-    'haskell':     [('$NAME($$$ARGS)', _GET_NAME)],
-    'solidity':    [('$NAME($$$ARGS)', _GET_NAME),          ('$OBJ.$NAME($$$ARGS)', _GET_OBJ_METHOD)],
+    'c':           [('$NAME($$$ARGS)', _GET_NAME),
+                    ('$NAME($$$ARGS);', _GET_NAME),
+                    ('$VAR = $NAME($$$ARGS)', _GET_NAME),
+                    ('$TYPE $VAR = $NAME($$$ARGS)', _GET_NAME)],
+    'go':          _COMMON_CALL,
+    'rust':        _COMMON_CALL,
+    'ruby':        _COMMON_CALL,
+    'java':        _COMMON_CALL,
+    'kotlin':      _COMMON_CALL,
+    'scala':       _COMMON_CALL,
+    'csharp':      _COMMON_CALL,
+    'php':         _COMMON_CALL,
+    'swift':       _COMMON_CALL,
+    'lua':         _COMMON_CALL,
+    'bash':        _COMMON_CALL_NO_OBJ,
+    'elixir':      _COMMON_CALL_NO_OBJ,
+    'haskell':     _COMMON_CALL_NO_OBJ,
+    'solidity':    _COMMON_CALL,
 }
 
 DEF_PATTERNS = {
