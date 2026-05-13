@@ -4,6 +4,7 @@ import subprocess
 import json
 import os
 import shutil
+import sys
 from pathlib import PurePath
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -22,6 +23,18 @@ _DEFAULT_IGNORE_DIRS = frozenset({
     '.tox', '.egg-info', '.mypy_cache', '.pytest_cache',
     'dist', 'build', 'target', '.idea', '.vscode',
 })
+
+_WARN_ENABLED = True
+
+
+def quiet():
+    global _WARN_ENABLED
+    _WARN_ENABLED = False
+
+
+def _warn(msg: str):
+    if _WARN_ENABLED:
+        print(f"warning: {msg}", file=sys.stderr)
 
 
 def _load_gitignore(dirpath: str):
@@ -87,9 +100,10 @@ def _extract_call_names(matchers, lang: str, path: str):
 class Symbol:
     name: str
     kind: str
-    ls: int
-    le: int
+    line_start: int
+    line_end: int
     calls: list[str] = field(default_factory=list)
+    children: list["Symbol"] = field(default_factory=list)
 
 
 @dataclass
@@ -110,8 +124,8 @@ def scan_file(path: str) -> FileResult | None:
             raw.append({
                 "name": m["metaVariables"]["single"]["NAME"]["text"],
                 "kind": kind,
-                "ls": m["range"]["start"]["line"] + 1,
-                "le": m["range"]["end"]["line"] + 1,
+                "line_start": m["range"]["start"]["line"] + 1,
+                "line_end": m["range"]["end"]["line"] + 1,
             })
 
     if not raw:
@@ -119,9 +133,10 @@ def scan_file(path: str) -> FileResult | None:
 
     seen: set[tuple[str, str, int]] = set()
     raw = [s for s in raw
-           if not ((s["name"], s["kind"], s["ls"]) in seen or seen.add((s["name"], s["kind"], s["ls"])))]
+           if not ((s["name"], s["kind"], s["line_start"]) in seen or seen.add((s["name"], s["kind"], s["line_start"])))]
 
-    symbols = [Symbol(name=s["name"], kind=s["kind"], ls=s["ls"], le=s["le"]) for s in raw]
+    symbols = [Symbol(name=s["name"], kind=s["kind"], line_start=s["line_start"], line_end=s["line_end"])
+               for s in raw]
     name_map: dict[str, list[Symbol]] = {}
     for s in symbols:
         name_map.setdefault(s.name, []).append(s)
@@ -130,18 +145,23 @@ def scan_file(path: str) -> FileResult | None:
 
     for s in symbols:
         body_calls: set[str] = set()
-        kids = [x for x in symbols if x is not s and x.ls > s.ls and x.le <= s.le]
+        kids = [x for x in symbols if x is not s and x.line_start > s.line_start and x.line_end <= s.line_end]
         for callee_name, call_line in all_calls:
-            if call_line <= s.ls or call_line > s.le:
+            if call_line <= s.line_start or call_line > s.line_end:
                 continue
-            if any(k.ls < call_line <= k.le for k in kids):
+            if any(k.line_start < call_line <= k.line_end for k in kids):
                 continue
             candidates = name_map.get(callee_name, [])
             for c in candidates:
-                if c.ls == s.ls and c.name == s.name:
+                if c.line_start == s.line_start and c.name == s.name:
                     continue
                 body_calls.add(callee_name)
         s.calls = sorted(body_calls)
+
+    containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
+    funcs = [s for s in symbols if s.kind == "func"]
+    for c in containers:
+        c.children = [f for f in funcs if f.line_start > c.line_start and f.line_end <= c.line_end]
 
     return FileResult(file=path, symbols=symbols)
 
@@ -194,10 +214,12 @@ def scan_dir(
             r = scan_file(f)
             if r:
                 results.append(r)
+            else:
+                _warn(f"no symbols found in {f}")
         return results
 
     max_workers = threads if threads > 1 else None
-    results = []
+    results: list[FileResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         fut_map = {pool.submit(scan_file, f): f for f in files}
         for fut in as_completed(fut_map):
@@ -205,8 +227,10 @@ def scan_dir(
                 r = fut.result()
                 if r:
                     results.append(r)
-            except Exception:
-                pass
+                else:
+                    _warn(f"no symbols found in {fut_map[fut]}")
+            except Exception as e:
+                _warn(f"failed to scan {fut_map[fut]}: {e}")
 
     results.sort(key=lambda r: r.file)
     return results
@@ -235,33 +259,16 @@ def format_result(result: FileResult, base_dir: str = "") -> str:
     lines = [f"file: {rel}"]
     for c in containers:
         ccall = f"  -> call[{', '.join(c.calls)}]" if c.calls else ""
-        lines.append(f"  {c.kind} {c.name}:{c.ls}~{c.le}{ccall}")
-        kids = [f for f in funcs if f.ls > c.ls and f.le <= c.le]
-        for k in kids:
+        lines.append(f"  {c.kind} {c.name}:{c.line_start}~{c.line_end}{ccall}")
+        for k in c.children:
             kcall = f"  -> call[{', '.join(k.calls)}]" if k.calls else ""
-            lines.append(f"    func {k.name}:{k.ls}~{k.le}{kcall}")
+            lines.append(f"    func {k.name}:{k.line_start}~{k.line_end}{kcall}")
 
-    top = [f for f in funcs
-           if not any(f.ls >= c.ls and f.le <= c.le for c in containers)]
+    funcs_inside = set(id(f) for c in containers for f in c.children)
+    top = [f for f in funcs if id(f) not in funcs_inside]
+
     for f in top:
         fcall = f"  -> call[{', '.join(f.calls)}]" if f.calls else ""
-        lines.append(f"  func {f.name}:{f.ls}~{f.le}{fcall}")
+        lines.append(f"  func {f.name}:{f.line_start}~{f.line_end}{fcall}")
 
     return "\n".join(lines)
-
-
-def format_json(result: FileResult, base_dir: str = "") -> str:
-    rel = os.path.relpath(result.file, base_dir) if base_dir else result.file
-    return json.dumps({
-        "file": rel,
-        "symbols": [
-            {
-                "name": s.name,
-                "kind": s.kind,
-                "line_start": s.ls,
-                "line_end": s.le,
-                "calls": s.calls,
-            }
-            for s in result.symbols
-        ],
-    }, ensure_ascii=False)

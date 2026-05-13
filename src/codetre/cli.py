@@ -5,7 +5,7 @@ import json
 import os
 import sys
 
-from .core import check_sg, scan_path, format_result
+from .core import check_sg, quiet as core_quiet, scan_path, format_result
 
 VERSION = "0.1.0"
 
@@ -41,6 +41,9 @@ def main():
         print(f"codetre {VERSION}")
         sys.exit(0)
 
+    if args.quiet:
+        core_quiet()
+
     results = scan_path(args.path, args.exclude, args.threads, args.no_ignore)
 
     if not results:
@@ -57,7 +60,7 @@ def main():
             items.append({
                 "file": rel,
                 "symbols": [
-                    {"name": s.name, "kind": s.kind, "line_start": s.ls, "line_end": s.le, "calls": s.calls}
+                    {"name": s.name, "kind": s.kind, "line_start": s.line_start, "line_end": s.line_end, "calls": s.calls}
                     for s in r.symbols
                 ],
             })
