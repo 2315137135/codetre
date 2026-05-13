@@ -38,10 +38,8 @@ CALL_PATTERNS = {
 DEF_PATTERNS = {
     'python':      [('class $NAME', 'class'),                    ('def $NAME', 'func')],
     'javascript':  [('class $NAME', 'class'),                    ('function $NAME($$$ARGS)', 'func')],
-    'typescript':  [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface'),
-                    ('function $NAME($$$ARGS)', 'func')],
-    'tsx':         [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface'),
-                    ('function $NAME($$$ARGS)', 'func')],
+    'typescript':  [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface')],
+    'tsx':         [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface')],
     'cpp':         [('class $NAME', 'class'),                    ('$TYPE $NAME($$$PARAMS) { $$$BODY }', 'func')],
     'c':           [('$TYPE $NAME($$$PARAMS) { $$$BODY }', 'func')],
     'go':          [('type $NAME struct { $$$BODY }', 'struct'), ('type $NAME interface { $$$BODY }', 'interface'),
@@ -70,6 +68,19 @@ DEF_PATTERNS = {
                     ('defp $NAME($$$PARAMS)', 'func')],
     'haskell':     [('$NAME :: $$$TYPE', 'func')],
     'solidity':    [('contract $NAME { $$$BODY }', 'class'),     ('function $NAME($$$PARAMS)', 'func')],
+}
+
+# Definition kind matchers via sg scan --inline-rules (AST node kind names).
+# These supplement DEF_PATTERNS for constructs that can't be expressed as plain patterns.
+KIND_DEFS = {
+    'javascript':  [('method_definition', 'func'), ('field_definition', 'field'),
+                     ('lexical_declaration', 'var'), ('variable_declaration', 'var')],
+    'typescript':  [('method_definition', 'func'), ('public_field_definition', 'field'),
+                     ('lexical_declaration', 'var'), ('variable_declaration', 'var'),
+                     ('function_declaration', 'func')],
+    'tsx':         [('method_definition', 'func'), ('public_field_definition', 'field'),
+                     ('lexical_declaration', 'var'), ('variable_declaration', 'var'),
+                     ('function_declaration', 'func')],
 }
 
 LANG_MAP = {

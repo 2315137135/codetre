@@ -14,7 +14,7 @@ try:
 except ImportError:
     pathspec = None
 
-from .patterns import LANG_MAP, DEF_PATTERNS, CALL_PATTERNS
+from .patterns import LANG_MAP, DEF_PATTERNS, CALL_PATTERNS, KIND_DEFS
 
 SG_TIMEOUT = 30
 
@@ -40,14 +40,16 @@ def _warn(msg: str):
 def _load_gitignore(dirpath: str):
     if not pathspec:
         return None
-    path = os.path.join(dirpath, '.gitignore')
-    if not os.path.isfile(path):
-        return None
-    try:
-        with open(path, encoding='utf-8') as f:
-            return pathspec.PathSpec.from_lines('gitwildmatch', f)
-    except Exception:
-        return None
+    result = {}
+    for base in {os.getcwd(), dirpath}:
+        path = os.path.join(base, '.gitignore')
+        if os.path.isfile(path) and base not in result:
+            try:
+                with open(path, encoding='utf-8') as f:
+                    result[base] = pathspec.PathSpec.from_lines('gitwildmatch', f)
+            except Exception:
+                pass
+    return result if result else None
 
 
 def check_sg() -> str | None:
@@ -83,6 +85,45 @@ def _sg_json(pattern: str, lang: str, filepath: str):
         return json.loads(r.stdout)
     except json.JSONDecodeError:
         return []
+
+
+def _sg_kind_json(kind_name: str, lang: str, filepath: str):
+    """Use sg scan --inline-rules to match by AST node kind."""
+    rule = f"id: {kind_name}\nlanguage: {lang}\nrule:\n  kind: {kind_name}"
+    try:
+        r = subprocess.run(
+            ["sg", "scan", "--inline-rules", rule, "--json=compact", filepath],
+            capture_output=True, encoding="utf-8", timeout=SG_TIMEOUT,
+        )
+    except FileNotFoundError:
+        return []
+    except subprocess.TimeoutExpired:
+        return []
+    if r.returncode != 0 or not r.stdout.strip():
+        return []
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def _extract_kind_name(text: str, kind: str) -> str:
+    if kind in ('method_definition', 'function_declaration'):
+        name = text.split('(')[0].strip()
+        return name.split()[-1] if name.split() else name
+    elif kind == 'public_field_definition':
+        name_part = text.split(':')[0].strip()
+        return name_part.split()[-1] if name_part.split() else name_part
+    elif kind == 'function_declaration':
+        name = text.split('(')[0].strip()
+        return name.split()[-1] if name.split() else name
+    elif kind == 'field_definition':
+        return text.split('=')[0].strip()
+    elif kind in ('lexical_declaration', 'variable_declaration'):
+        rest = text.split(None, 1)[1] if ' ' in text else text
+        name = rest.split('=')[0].split(':')[0].strip()
+        return name
+    return text
 
 
 def _extract_call_names(matchers, lang: str, path: str):
@@ -128,6 +169,15 @@ def scan_file(path: str) -> FileResult | None:
                 "line_end": m["range"]["end"]["line"] + 1,
             })
 
+    for kind_name, sym_kind in KIND_DEFS.get(lang, []):
+        for m in _sg_kind_json(kind_name, lang, path):
+            raw.append({
+                "name": _extract_kind_name(m["text"], kind_name),
+                "kind": sym_kind,
+                "line_start": m["range"]["start"]["line"] + 1,
+                "line_end": m["range"]["end"]["line"] + 1,
+            })
+
     if not raw:
         return None
 
@@ -160,8 +210,24 @@ def scan_file(path: str) -> FileResult | None:
 
     containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
     funcs = [s for s in symbols if s.kind == "func"]
+    fields = [s for s in symbols if s.kind == "field"]
     for c in containers:
-        c.children = [f for f in funcs if f.line_start > c.line_start and f.line_end <= c.line_end]
+        c.children = [s for s in symbols
+                      if s is not c and s.line_start > c.line_start and s.line_end <= c.line_end
+                      and s.kind in ("func", "field")]
+
+    inside_funcs: set[int] = set()
+    for f in funcs:
+        for s in symbols:
+            if (s is not f and s.kind in ("func", "field", "var")
+                    and s.line_start >= f.line_start and s.line_end <= f.line_end
+                    and (s.line_start > f.line_start or s.line_end < f.line_end)):
+                inside_funcs.add(id(s))
+
+    container_ids = {id(c) for c in containers}
+    symbols = [s for s in symbols
+               if s.kind in ("class", "struct", "interface", "impl", "func", "field")
+               or (s.kind == "var" and id(s) not in inside_funcs)]
 
     return FileResult(file=path, symbols=symbols)
 
@@ -173,7 +239,7 @@ def scan_dir(
     no_ignore: bool = False,
 ) -> list[FileResult]:
     exclude = exclude_patterns or []
-    ignore_spec = _load_gitignore(dirpath) if not no_ignore else None
+    ignore_map = _load_gitignore(dirpath) if not no_ignore else None
     files: list[str] = []
     for root, dirs, fnames in os.walk(dirpath):
         dirs.sort()
@@ -181,10 +247,11 @@ def scan_dir(
         if not no_ignore:
             dirs[:] = [d for d in dirs if d not in _DEFAULT_IGNORE_DIRS]
 
-        if not no_ignore and ignore_spec:
-            dirs[:] = [d for d in dirs
-                       if not ignore_spec.match_file(
-                           os.path.relpath(os.path.join(root, d), dirpath).replace("\\", "/") + "/_")]
+        if not no_ignore and ignore_map:
+            for base, spec in ignore_map.items():
+                rel_base = os.path.relpath(root, base).replace("\\", "/")
+                dirs[:] = [d for d in dirs
+                           if not spec.match_file(os.path.join(rel_base, d).replace("\\", "/") + "/_")]
 
         if exclude:
             dirs[:] = [d for d in dirs
@@ -195,15 +262,20 @@ def scan_dir(
             ext = os.path.splitext(path)[1]
             if ext not in LANG_MAP:
                 continue
-            if not no_ignore and ignore_spec:
-                rel = os.path.relpath(path, dirpath).replace("\\", "/")
-                if ignore_spec.match_file(rel):
-                    continue
+            if not no_ignore and ignore_map:
+                for base, spec in ignore_map.items():
+                    rel = os.path.relpath(path, base).replace("\\", "/")
+                    if spec.match_file(rel):
+                        break
+                else:
+                    files.append(path)
+            else:
+                files.append(path)
             if exclude:
                 rel = os.path.relpath(path, dirpath).replace("\\", "/")
                 if any(PurePath(rel).match(pat) for pat in exclude):
+                    files.pop()
                     continue
-            files.append(path)
 
     if not files:
         return []
@@ -255,6 +327,7 @@ def format_result(result: FileResult, base_dir: str = "") -> str:
     symbols = result.symbols
     containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
     funcs = [s for s in symbols if s.kind == "func"]
+    vars = [s for s in symbols if s.kind == "var"]
 
     lines = [f"file: {rel}"]
     for c in containers:
@@ -262,13 +335,20 @@ def format_result(result: FileResult, base_dir: str = "") -> str:
         lines.append(f"  {c.kind} {c.name}:{c.line_start}~{c.line_end}{ccall}")
         for k in c.children:
             kcall = f"  -> call[{', '.join(k.calls)}]" if k.calls else ""
-            lines.append(f"    func {k.name}:{k.line_start}~{k.line_end}{kcall}")
+            if k.kind == "field":
+                lines.append(f"    field {k.name}:{k.line_start}~{k.line_end}{kcall}")
+            else:
+                lines.append(f"    func {k.name}:{k.line_start}~{k.line_end}{kcall}")
 
-    funcs_inside = set(id(f) for c in containers for f in c.children)
-    top = [f for f in funcs if id(f) not in funcs_inside]
+    children_ids = set(id(s) for c in containers for s in c.children)
+    top = [s for s in symbols
+           if s.kind in ("func", "var") and id(s) not in children_ids and s not in containers]
 
     for f in top:
         fcall = f"  -> call[{', '.join(f.calls)}]" if f.calls else ""
-        lines.append(f"  func {f.name}:{f.line_start}~{f.line_end}{fcall}")
+        if f.kind == "var":
+            lines.append(f"  var {f.name}:{f.line_start}~{f.line_end}{fcall}")
+        else:
+            lines.append(f"  func {f.name}:{f.line_start}~{f.line_end}{fcall}")
 
     return "\n".join(lines)
