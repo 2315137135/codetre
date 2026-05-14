@@ -5,25 +5,20 @@ import json
 import os
 import sys
 
-from .scanner import check_sg, quiet as core_quiet, scan_path
+from .scanner import check_sg, quiet as core_quiet, scan_path, scan_paths
 from .formatter import format_result
 
 VERSION = "0.2.1"
 
 
 def main():
-    err = check_sg()
-    if err:
-        print(err, file=sys.stderr)
-        sys.exit(1)
-
     parser = argparse.ArgumentParser(
         prog="codetre",
         description="Hierarchical code structure outline with call relationships.",
         epilog="Powered by ast-grep tree-sitter integration.",
     )
-    parser.add_argument("path", nargs="?", default=".",
-                        help="File or directory to scan (default: current dir)")
+    parser.add_argument("path", nargs="*", default=["."],
+                        help="File(s) or director(ies) to scan (default: current dir)")
     parser.add_argument("--json", action="store_true",
                         help="Output in JSON format")
     parser.add_argument("--exclude", action="append", default=[],
@@ -42,17 +37,28 @@ def main():
         print(f"codetre {VERSION}")
         sys.exit(0)
 
+    err = check_sg()
+    if err:
+        print(err, file=sys.stderr)
+        sys.exit(1)
+
     if args.quiet:
         core_quiet()
 
-    results = scan_path(args.path, args.exclude, args.threads, args.no_ignore)
+    if len(args.path) == 1:
+        results = scan_path(args.path[0], args.exclude, args.threads, args.no_ignore)
+        base_dir = args.path[0] if os.path.isdir(args.path[0]) else os.path.dirname(args.path[0]) or "."
+    else:
+        results = scan_paths(args.path, args.exclude, args.threads, args.no_ignore)
+        base_dir = "."
 
     if not results:
         if not args.quiet:
-            print(f"no symbols found in {args.path}", file=sys.stderr)
+            paths_str = ", ".join(args.path)
+            print(f"no symbols found in {paths_str}", file=sys.stderr)
         sys.exit(2)
 
-    base_dir = args.path if os.path.isdir(args.path) else os.path.dirname(args.path) or "."
+    total_symbols = sum(len(r.symbols) for r in results)
 
     if args.json:
         items = []
@@ -76,6 +82,12 @@ def main():
             if i > 0:
                 print()
             print(format_result(r, base_dir))
+
+        # Summary line (stderr so it doesn't pollute piped/redirected output)
+        if not args.quiet:
+            file_word = "file" if len(results) == 1 else "files"
+            sym_word = "symbol" if total_symbols == 1 else "symbols"
+            print(f"# {len(results)} {file_word}, {total_symbols} {sym_word}", file=sys.stderr)
 
     sys.exit(0)
 

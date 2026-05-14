@@ -171,5 +171,47 @@ function helper() {
         check("also_ignore.py excluded by target gitignore", "also_ignore.py" not in r.stdout, r.stdout)
 
     # ---
+    print("=== scan multiple files ===")
+    with tempfile.TemporaryDirectory() as tmp:
+        src1 = os.path.join(tmp, "a.py")
+        src2 = os.path.join(tmp, "b.py")
+        with open(src1, "w", encoding="utf-8") as f:
+            f.write("def foo(): pass")
+        with open(src2, "w", encoding="utf-8") as f:
+            f.write("def bar(): pass")
+        r = run_codetre(src1, src2)
+        check("multi-file exit 0", r.returncode == 0, f"got {r.returncode}\n{r.stderr}")
+        check("multi-file has a.py", "a.py" in r.stdout, r.stdout)
+        check("multi-file has b.py", "b.py" in r.stdout, r.stdout)
+        check("multi-file has foo", "func foo:" in r.stdout, r.stdout)
+        check("multi-file has bar", "func bar:" in r.stdout, r.stdout)
+
+    # ---
+    print("=== scan mix of file and directory ===")
+    with tempfile.TemporaryDirectory() as tmp:
+        src1 = os.path.join(tmp, "a.py")
+        subdir = os.path.join(tmp, "sub")
+        os.makedirs(subdir)
+        src2 = os.path.join(subdir, "b.py")
+        with open(src1, "w", encoding="utf-8") as f:
+            f.write("def foo(): pass")
+        with open(src2, "w", encoding="utf-8") as f:
+            f.write("def bar(): pass")
+        r = run_codetre(src1, subdir)
+        check("mix exit 0", r.returncode == 0, f"got {r.returncode}\n{r.stderr}")
+        check("mix has a.py", "a.py" in r.stdout, r.stdout)
+        check("mix has b.py", "b.py" in r.stdout, r.stdout)
+
+    # ---
+    print("=== scan overlapping paths dedup ===")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "dup.py")
+        with open(src, "w", encoding="utf-8") as f:
+            f.write("def dup(): pass")
+        r = run_codetre(src, tmp)
+        check("dedup exit 0", r.returncode == 0, f"got {r.returncode}\n{r.stderr}")
+        check("dedup only one dup.py", r.stdout.count("dup.py") == 1, f"count: {r.stdout.count('dup.py')}\n{r.stdout}")
+
+    # ---
     print(f"\n=== {FAILED} failures ===")
     sys.exit(FAILED)

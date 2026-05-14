@@ -303,8 +303,6 @@ def scan_dir(
             r = scan_file(f)
             if r:
                 results.append(r)
-            else:
-                _warn(f"no symbols found in {f}")
         return results
 
     max_workers = threads if threads > 1 else None
@@ -316,8 +314,6 @@ def scan_dir(
                 r = fut.result()
                 if r:
                     results.append(r)
-                else:
-                    _warn(f"no symbols found in {fut_map[fut]}")
             except Exception as e:
                 _warn(f"failed to scan {fut_map[fut]}: {e}")
 
@@ -337,3 +333,22 @@ def scan_path(
     if os.path.isdir(path):
         return scan_dir(path, exclude_patterns, threads, no_ignore)
     return []
+
+
+def scan_paths(
+    paths: list[str],
+    exclude_patterns: list[str] | None = None,
+    threads: int = 0,
+    no_ignore: bool = False,
+) -> list[FileResult]:
+    """Scan multiple paths, deduplicate by absolute file path, and return sorted results."""
+    seen: set[str] = set()
+    results: list[FileResult] = []
+    for p in paths:
+        for r in scan_path(p, exclude_patterns, threads, no_ignore):
+            abs_path = os.path.abspath(r.file)
+            if abs_path not in seen:
+                seen.add(abs_path)
+                results.append(r)
+    results.sort(key=lambda r: r.file)
+    return results
