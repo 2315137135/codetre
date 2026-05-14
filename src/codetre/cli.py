@@ -5,7 +5,8 @@ import json
 import os
 import sys
 
-from .core import check_sg, quiet as core_quiet, scan_path, format_result
+from .scanner import check_sg, quiet as core_quiet, scan_path
+from .formatter import format_result
 
 VERSION = "0.2.1"
 
