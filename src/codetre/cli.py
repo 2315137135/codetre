@@ -69,6 +69,8 @@ def main():
         else:
             print(json.dumps(items, ensure_ascii=False))
     else:
+        print("# format: name:start,count  -> [ref, ...]")
+        print()
         for i, r in enumerate(results):
             if i > 0:
                 print()

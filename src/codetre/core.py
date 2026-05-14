@@ -322,33 +322,46 @@ def scan_path(
     return []
 
 
+def _count_lines(filepath: str) -> int:
+    """Count total lines in a file."""
+    try:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
+            return sum(1 for _ in f)
+    except Exception:
+        return 0
+
+
+def _symbol_line(s: Symbol) -> str:
+    """Format a single symbol line: kind name:line_start,line_count [-> [callee, ...]]"""
+    line_len = s.line_end - s.line_start + 1
+    if s.kind in ("var", "field"):
+        part = f"{s.kind} {s.name}:{s.line_start}"
+    else:
+        part = f"{s.kind} {s.name}:{s.line_start},{line_len}"
+    if s.calls:
+        part += f" -> [{', '.join(s.calls)}]"
+    return part
+
+
 def format_result(result: FileResult, base_dir: str = "") -> str:
     rel = os.path.relpath(result.file, base_dir) if base_dir else result.file
+    total_lines = _count_lines(result.file)
     symbols = result.symbols
     containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
     funcs = [s for s in symbols if s.kind == "func"]
     vars = [s for s in symbols if s.kind == "var"]
 
-    lines = [f"file: {rel}"]
+    lines = [f"file: {rel},{total_lines}"]
     for c in containers:
-        ccall = f"  -> call[{', '.join(c.calls)}]" if c.calls else ""
-        lines.append(f"  {c.kind} {c.name}:{c.line_start}~{c.line_end}{ccall}")
+        lines.append(f"  {_symbol_line(c)}")
         for k in c.children:
-            kcall = f"  -> call[{', '.join(k.calls)}]" if k.calls else ""
-            if k.kind == "field":
-                lines.append(f"    field {k.name}:{k.line_start}~{k.line_end}{kcall}")
-            else:
-                lines.append(f"    func {k.name}:{k.line_start}~{k.line_end}{kcall}")
+            lines.append(f"    {_symbol_line(k)}")
 
     children_ids = set(id(s) for c in containers for s in c.children)
     top = [s for s in symbols
            if s.kind in ("func", "var") and id(s) not in children_ids and s not in containers]
 
-    for f in top:
-        fcall = f"  -> call[{', '.join(f.calls)}]" if f.calls else ""
-        if f.kind == "var":
-            lines.append(f"  var {f.name}:{f.line_start}~{f.line_end}{fcall}")
-        else:
-            lines.append(f"  func {f.name}:{f.line_start}~{f.line_end}{fcall}")
+    for s in top:
+        lines.append(f"  {_symbol_line(s)}")
 
     return "\n".join(lines)

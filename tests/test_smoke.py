@@ -57,7 +57,7 @@ with tempfile.TemporaryDirectory() as tmp:
     check("has class", "class Greeter:" in r.stdout, r.stdout)
     check("has greet func", "func greet:" in r.stdout, r.stdout)
     check("has __init__ func", "func __init__:" in r.stdout, r.stdout)
-    check("has call chain", "-> call[greet]" in r.stdout, r.stdout)
+    check("has call chain", "-> [greet]" in r.stdout, r.stdout)
 
 # ---
 print("=== JSON output ===")
