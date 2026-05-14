@@ -139,7 +139,12 @@ class FileResult:
     symbols: list[Symbol]
 
 
-def scan_file(path: str) -> FileResult | None:
+def _extract_raw_symbols(path: str) -> tuple[str, list[dict]] | None:
+    """Detect language and extract raw symbol dicts via pattern & kind matchers.
+
+    Returns (lang, raw_symbols) on success, or None if the file is not scannable
+    or contains no symbols.
+    """
     ext = os.path.splitext(path)[1]
     lang = LANG_MAP.get(ext)
     if not lang or not os.path.isfile(path):
@@ -166,13 +171,23 @@ def scan_file(path: str) -> FileResult | None:
 
     if not raw:
         return None
+    return lang, raw
 
+
+def _dedup_raw(raw: list[dict]) -> list[dict]:
+    """Remove duplicate symbol entries (same name, kind, start line)."""
     seen: set[tuple[str, str, int]] = set()
-    raw = [s for s in raw
-           if not ((s["name"], s["kind"], s["line_start"]) in seen or seen.add((s["name"], s["kind"], s["line_start"])))]
+    result = []
+    for s in raw:
+        key = (s["name"], s["kind"], s["line_start"])
+        if key not in seen:
+            seen.add(key)
+            result.append(s)
+    return result
 
-    symbols = [Symbol(name=s["name"], kind=s["kind"], line_start=s["line_start"], line_end=s["line_end"])
-               for s in raw]
+
+def _assign_calls(symbols: list[Symbol], lang: str, path: str) -> None:
+    """Extract all call sites and assign callee names to each symbol in place."""
     name_map: dict[str, list[Symbol]] = {}
     for s in symbols:
         name_map.setdefault(s.name, []).append(s)
@@ -194,13 +209,19 @@ def scan_file(path: str) -> FileResult | None:
                 body_calls.add(callee_name)
         s.calls = sorted(body_calls)
 
+
+def _build_container_hierarchy(symbols: list[Symbol]) -> None:
+    """Assign child symbols (funcs, fields) to container symbols in place."""
     containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
-    funcs = [s for s in symbols if s.kind == "func"]
-    fields = [s for s in symbols if s.kind == "field"]
     for c in containers:
         c.children = [s for s in symbols
                       if s is not c and s.line_start > c.line_start and s.line_end <= c.line_end
                       and s.kind in ("func", "field")]
+
+
+def _filter_inner_vars(symbols: list[Symbol], lang: str, path: str) -> list[Symbol]:
+    """Remove vars nested inside functions or Python __main__ blocks."""
+    funcs = [s for s in symbols if s.kind == "func"]
 
     inside_funcs: set[int] = set()
     for f in funcs:
@@ -220,10 +241,24 @@ def scan_file(path: str) -> FileResult | None:
                 if s.kind == "var" and start <= s.line_start <= end:
                     inside_main.add(id(s))
 
-    container_ids = {id(c) for c in containers}
-    symbols = [s for s in symbols
-               if s.kind in ("class", "struct", "interface", "impl", "func", "field")
-               or (s.kind == "var" and id(s) not in inside_funcs and id(s) not in inside_main)]
+    return [s for s in symbols
+            if s.kind in ("class", "struct", "interface", "impl", "func", "field")
+            or (s.kind == "var" and id(s) not in inside_funcs and id(s) not in inside_main)]
+
+
+def scan_file(path: str) -> FileResult | None:
+    extracted = _extract_raw_symbols(path)
+    if extracted is None:
+        return None
+    lang, raw = extracted
+
+    raw = _dedup_raw(raw)
+    symbols = [Symbol(name=s["name"], kind=s["kind"], line_start=s["line_start"], line_end=s["line_end"])
+               for s in raw]
+
+    _assign_calls(symbols, lang, path)
+    _build_container_hierarchy(symbols)
+    symbols = _filter_inner_vars(symbols, lang, path)
 
     return FileResult(file=path, symbols=symbols)
 
