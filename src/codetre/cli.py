@@ -69,7 +69,7 @@ def main():
         else:
             print(json.dumps(items, ensure_ascii=False))
     else:
-        print("# format: name:start,count  -> [ref, ...]")
+        print("# format: name:start,count  -> [file-local ref, ...]")
         print()
         for i, r in enumerate(results):
             if i > 0:

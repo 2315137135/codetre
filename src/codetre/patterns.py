@@ -83,6 +83,20 @@ KIND_DEFS = {
                      ('function_declaration', 'func')],
 }
 
+IMPORT_PATTERNS = {
+    'python':      [('import $NAME', _GET_NAME), ('from $$$_ import $NAME', _GET_NAME)],
+    'javascript':  [('import $NAME from $$$_', _GET_NAME), ('import { $NAME } from $$$_', _GET_NAME)],
+    'typescript':  [('import $NAME from $$$_', _GET_NAME), ('import { $NAME } from $$$_', _GET_NAME)],
+    'tsx':         [('import $NAME from $$$_', _GET_NAME), ('import { $NAME } from $$$_', _GET_NAME)],
+    'go':          [('import "$$$_"', _GET_NAME)],
+    'rust':        [('use $$$_::$NAME;', _GET_NAME)],
+    'java':        [('import $$$_.$NAME;', _GET_NAME)],
+    'scala':       [('import $$$_.$NAME', _GET_NAME)],
+    'kotlin':      [('import $$$_.$NAME', _GET_NAME)],
+    'swift':       [('import $NAME', _GET_NAME)],
+    'ruby':        [('require \'$$$_\'', _GET_NAME)],
+}
+
 LANG_MAP = {
     '.py': 'python', '.js': 'javascript', '.ts': 'typescript', '.tsx': 'tsx',
     '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.c': 'c', '.h': 'c',
