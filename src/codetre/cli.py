@@ -6,7 +6,7 @@ import os
 import sys
 
 from .scanner import check_sg, quiet as core_quiet, scan_path, scan_paths
-from .formatter import format_result
+from .formatter import DisplayConfig, DEFAULT_DISPLAY_CONFIG, format_result
 
 VERSION = "0.3.0"
 
@@ -31,6 +31,15 @@ def main():
                         help="Suppress non-output messages")
     parser.add_argument("--version", action="store_true",
                         help="Show version and exit")
+    parser.add_argument("--imports", choices=["show", "count", "hide"],
+                        default=DEFAULT_DISPLAY_CONFIG.imports,
+                        help="Display mode for import blocks (default: %(default)s)")
+    parser.add_argument("--fields", choices=["show", "count", "hide"],
+                        default=DEFAULT_DISPLAY_CONFIG.fields,
+                        help="Display mode for field symbols inside containers (default: %(default)s)")
+    parser.add_argument("--vars", choices=["show", "count", "hide"],
+                        default=DEFAULT_DISPLAY_CONFIG.vars,
+                        help="Display mode for variable/const symbols (default: %(default)s)")
     args = parser.parse_args()
 
     if args.version:
@@ -76,12 +85,17 @@ def main():
         else:
             print(json.dumps(items, ensure_ascii=False))
     else:
+        display_config = DisplayConfig(
+            imports=args.imports,
+            fields=args.fields,
+            vars=args.vars,
+        )
         print("# format: name:start,count  -> [file-local ref, ...]")
         print()
         for i, r in enumerate(results):
             if i > 0:
                 print()
-            print(format_result(r, base_dir))
+            print(format_result(r, base_dir, display_config))
 
         # Summary line (stderr so it doesn't pollute piped/redirected output)
         if not args.quiet:

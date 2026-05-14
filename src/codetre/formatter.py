@@ -1,10 +1,29 @@
 """Formatter module: text output formatting for scan results."""
 
 import os
+from dataclasses import dataclass
 
 from .patterns import LANG_MAP, IMPORT_PATTERNS
 from .symbol import Symbol, FileResult
 from .scanner import sg_json
+
+
+@dataclass
+class DisplayConfig:
+    """Control display granularity for symbol categories.
+
+    Each field accepts one of:
+      "show"   — fully expand (current default behaviour)
+      "count"  — show a summary line:  imports(N) / fields(N) / vars(N)
+      "hide"   — omit entirely
+    """
+    imports: str = "show"
+    fields: str = "show"
+    vars: str = "show"
+
+
+# Module-level default — tune here to change default behaviour project-wide.
+DEFAULT_DISPLAY_CONFIG = DisplayConfig()
 
 
 def _count_lines(filepath: str) -> int:
@@ -68,39 +87,70 @@ def _extract_import_lines(path: str, lang: str) -> list[str]:
         return []
 
 
-def format_result(result: FileResult, base_dir: str = "") -> str:
+def format_result(
+    result: FileResult,
+    base_dir: str = "",
+    config: DisplayConfig | None = None,
+) -> str:
+    config = config or DEFAULT_DISPLAY_CONFIG
     rel = os.path.relpath(result.file, base_dir) if base_dir else result.file
     total_lines = _count_lines(result.file)
     symbols = result.symbols
     containers = [s for s in symbols if s.kind in ("class", "struct", "interface", "impl")]
 
-
     lines = [f"file: {rel},{total_lines}"]
-
-    # Raw import block display (capped at 12 lines)
     ext = os.path.splitext(result.file)[1]
     lang = LANG_MAP.get(ext)
-    if lang:
+
+    # ---- Imports ----
+    if config.imports != "hide" and lang:
         raw_imports = _extract_import_lines(result.file, lang)
         if raw_imports:
-            shown = raw_imports[:12]
-            hidden = len(raw_imports) - 12
-            for line in shown:
-                lines.append(f"  {line}")
-            if hidden > 0:
-                lines.append(f"  ... ({hidden} more import lines)")
+            if config.imports == "show":
+                shown = raw_imports[:12]
+                hidden = len(raw_imports) - 12
+                for line in shown:
+                    lines.append(f"  {line}")
+                if hidden > 0:
+                    lines.append(f"  ... ({hidden} more import lines)")
+            else:  # count
+                lines.append(f"  imports({len(raw_imports)})")
             lines.append("")
 
+    # ---- Containers (class / struct / interface / impl) ----
     for c in containers:
         lines.append(f"  {_symbol_line(c)}")
-        for k in c.children:
+        child_fields = [k for k in c.children if k.kind == "field"]
+        child_others = [k for k in c.children if k.kind != "field"]
+
+        for k in child_others:
             lines.append(f"    {_symbol_line(k)}")
 
+        if child_fields:
+            if config.fields == "show":
+                for k in child_fields:
+                    lines.append(f"    {_symbol_line(k)}")
+            elif config.fields == "count":
+                lines.append(f"    fields({len(child_fields)})")
+            # hide: skip
+
+    # ---- Top-level symbols ----
     children_ids = set(id(s) for c in containers for s in c.children)
     top = [s for s in symbols
            if s.kind in ("func", "var") and id(s) not in children_ids and s not in containers]
 
-    for s in top:
+    top_funcs = [s for s in top if s.kind == "func"]
+    top_vars = [s for s in top if s.kind == "var"]
+
+    for s in top_funcs:
         lines.append(f"  {_symbol_line(s)}")
+
+    if top_vars:
+        if config.vars == "show":
+            for s in top_vars:
+                lines.append(f"  {_symbol_line(s)}")
+        elif config.vars == "count":
+            lines.append(f"  vars({len(top_vars)})")
+        # hide: skip
 
     return "\n".join(lines)

@@ -12,5 +12,6 @@ from .scanner import (
 )
 from .formatter import (
     _count_lines, _symbol_line, _extract_import_lines,
+    DisplayConfig, DEFAULT_DISPLAY_CONFIG,
     format_result,
 )
