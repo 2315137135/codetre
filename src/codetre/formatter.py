@@ -13,9 +13,11 @@ class DisplayConfig:
     """Control display granularity for symbol categories.
 
     Each field accepts one of:
-      "show"   — fully expand (current default behaviour)
+      "show"   — fully expand
       "count"  — show a summary line:  imports(N) / fields(N) / vars(N)
       "hide"   — omit entirely
+
+    Defaults: imports="show", fields="count", vars="hide".
     """
     imports: str = "show"
     fields: str = "show"
@@ -23,7 +25,10 @@ class DisplayConfig:
 
 
 # Module-level default — tune here to change default behaviour project-wide.
-DEFAULT_DISPLAY_CONFIG = DisplayConfig()
+DEFAULT_DISPLAY_CONFIG = DisplayConfig(
+    fields="count",
+    vars="hide",
+)
 
 
 def _count_lines(filepath: str) -> int:
