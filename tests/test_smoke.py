@@ -133,7 +133,7 @@ function helper() {
     return 42;
 }
 """)
-        r = run_codetre(src)
+        r = run_codetre("--vars", "show", "--fields", "show", src)
         check("TS exit code 0", r.returncode == 0, f"got {r.returncode}\n{r.stderr}")
         check("TS class detected", "class UserService:" in r.stdout, r.stdout)
         check("TS constructor detected", "func constructor:" in r.stdout, r.stdout)
