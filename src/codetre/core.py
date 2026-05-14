@@ -68,58 +68,44 @@ def check_sg() -> str | None:
     )
 
 
-def _sg_json(pattern: str, lang: str, filepath: str):
+def _run_sg(args: list[str]) -> list[dict]:
+    """Run an ast-grep command and return parsed JSON results."""
     try:
         r = subprocess.run(
-            ["sg", "run", "--pattern", pattern, "--lang", lang, "--json=compact", filepath],
+            ["sg", *args],
             capture_output=True, encoding="utf-8", timeout=SG_TIMEOUT,
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         return []
-    except subprocess.TimeoutExpired:
-        return []
-
     if r.returncode != 0 or not r.stdout.strip():
         return []
     try:
         return json.loads(r.stdout)
     except json.JSONDecodeError:
         return []
+
+
+def _sg_json(pattern: str, lang: str, filepath: str):
+    """Match definitions or imports via sg run --pattern."""
+    return _run_sg(["run", "--pattern", pattern, "--lang", lang, "--json=compact", filepath])
 
 
 def _sg_kind_json(kind_name: str, lang: str, filepath: str):
-    """Use sg scan --inline-rules to match by AST node kind."""
+    """Match by AST node kind via sg scan --inline-rules."""
     rule = f"id: {kind_name}\nlanguage: {lang}\nrule:\n  kind: {kind_name}"
-    try:
-        r = subprocess.run(
-            ["sg", "scan", "--inline-rules", rule, "--json=compact", filepath],
-            capture_output=True, encoding="utf-8", timeout=SG_TIMEOUT,
-        )
-    except FileNotFoundError:
-        return []
-    except subprocess.TimeoutExpired:
-        return []
-    if r.returncode != 0 or not r.stdout.strip():
-        return []
-    try:
-        return json.loads(r.stdout)
-    except json.JSONDecodeError:
-        return []
+    return _run_sg(["scan", "--inline-rules", rule, "--json=compact", filepath])
 
 
 def _extract_kind_name(text: str, kind: str) -> str:
     if kind in ('method_definition', 'function_declaration'):
         name = text.split('(')[0].strip()
         return name.split()[-1] if name.split() else name
-    elif kind == 'public_field_definition':
+    if kind == 'public_field_definition':
         name_part = text.split(':')[0].strip()
         return name_part.split()[-1] if name_part.split() else name_part
-    elif kind == 'function_declaration':
-        name = text.split('(')[0].strip()
-        return name.split()[-1] if name.split() else name
-    elif kind == 'field_definition':
+    if kind == 'field_definition':
         return text.split('=')[0].strip()
-    elif kind in ('lexical_declaration', 'variable_declaration'):
+    if kind in ('lexical_declaration', 'variable_declaration'):
         rest = text.split(None, 1)[1] if ' ' in text else text
         name = rest.split('=')[0].split(':')[0].strip()
         return name
@@ -272,20 +258,22 @@ def scan_dir(
             ext = os.path.splitext(path)[1]
             if ext not in LANG_MAP:
                 continue
+            # Skip gitignored files
             if not no_ignore and ignore_map:
+                ignored = False
                 for base, spec in ignore_map.items():
                     rel = os.path.relpath(path, base).replace("\\", "/")
                     if spec.match_file(rel):
+                        ignored = True
                         break
-                else:
-                    files.append(path)
-            else:
-                files.append(path)
+                if ignored:
+                    continue
+            # Skip files matching --exclude patterns
             if exclude:
                 rel = os.path.relpath(path, dirpath).replace("\\", "/")
                 if any(PurePath(rel).match(pat) for pat in exclude):
-                    files.pop()
                     continue
+            files.append(path)
 
     if not files:
         return []
