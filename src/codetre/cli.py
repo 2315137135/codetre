@@ -8,7 +8,7 @@ import sys
 from .scanner import check_sg, quiet as core_quiet, scan_path, scan_paths
 from .formatter import format_result
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 
 
 def main():

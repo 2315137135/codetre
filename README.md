@@ -28,6 +28,15 @@ codetre src/
 
 # Scan single file
 codetre src/main.py
+
+# Scan multiple files / directories
+codetre src/main.py tests/
+
+# JSON output
+codetre --json src/
+
+# Exclude patterns
+codetre --exclude "test_*" --exclude "*_gen.py" src/
 ```
 
 ## Supported Languages
@@ -38,17 +47,36 @@ Kotlin, Scala, C#, PHP, Swift, Lua, Bash, and more.
 ## Output Example
 
 ```
-file: src/services/auth.py
-  class AuthService:9~40
-    func login:14~20  -> call[_generate_token, _verify_password]
-    func validate_token:22~30
-    func logout:32~34
+# format: name:start,count  -> [file-local ref, ...]
 
-file: src/main.py
-  class App:8~39
-    func register_user:15~19
-    func place_order:21~30  -> call[validate_token, create_order, approve_order]
+file: src/services/auth.py,84
+  import hashlib
+  import jwt
+
+  class AuthService:9,76
+    func __init__:14,7 -> [_load_secrets]
+    func login:22,20  -> [_generate_token, _verify_password]
+    func validate_token:43,20
+    func _load_secrets:64,12
+    func _generate_token:77,4
+    func _verify_password:82,3
+  func logout:32,8
+  var SECRET_KEY:6
+
+file: src/main.py,39
+  import os
+  from .services import AuthService
+
+  class App:8,32
+    func register_user:15,8
+    func place_order:24,15 -> [validate_token, create_order]
+  func create_app:4,3
+  var VERSION:1
 ```
+
+Each symbol shows `kind name:start_line,line_count`. Container symbols
+(class/struct/interface) have their children indented underneath.
+Call relationships appear as `-> [callee, ...]`.
 
 ## License
 
