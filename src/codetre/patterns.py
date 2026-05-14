@@ -36,7 +36,8 @@ CALL_PATTERNS = {
 }
 
 DEF_PATTERNS = {
-    'python':      [('class $NAME', 'class'),                    ('def $NAME', 'func')],
+    'python':      [('class $NAME', 'class'),                    ('def $NAME', 'func'),
+                    ('$NAME = $$$VALUE', 'var')],
     'javascript':  [('class $NAME', 'class'),                    ('function $NAME($$$ARGS)', 'func')],
     'typescript':  [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface')],
     'tsx':         [('class $NAME', 'class'),                    ('interface $NAME { $$$BODY }', 'interface')],

@@ -224,10 +224,20 @@ def scan_file(path: str) -> FileResult | None:
                     and (s.line_start > f.line_start or s.line_end < f.line_end)):
                 inside_funcs.add(id(s))
 
+    # Detect if __name__ == "__main__" blocks — vars inside them are not module constants
+    inside_main: set[int] = set()
+    if lang == 'python':
+        for m in _sg_json('if __name__ == $VAL: $$$BODY', lang, path):
+            start = m["range"]["start"]["line"] + 1
+            end = m["range"]["end"]["line"] + 1
+            for s in symbols:
+                if s.kind == "var" and start <= s.line_start <= end:
+                    inside_main.add(id(s))
+
     container_ids = {id(c) for c in containers}
     symbols = [s for s in symbols
                if s.kind in ("class", "struct", "interface", "impl", "func", "field")
-               or (s.kind == "var" and id(s) not in inside_funcs)]
+               or (s.kind == "var" and id(s) not in inside_funcs and id(s) not in inside_main)]
 
     return FileResult(file=path, symbols=symbols)
 
