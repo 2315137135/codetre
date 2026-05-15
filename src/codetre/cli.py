@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--json", action="store_true",
                         help="Output in JSON format")
     parser.add_argument("--exclude", action="append", default=[],
-                        help="Glob pattern to exclude files (can be repeated)")
+                        help="Glob pattern(s) to exclude files (comma-separated, can be repeated)")
     parser.add_argument("--threads", type=int, default=0,
                         help="Number of worker threads (0 = auto, 1 = sequential)")
     parser.add_argument("--no-ignore", action="store_true",
@@ -41,6 +41,17 @@ def main():
                         default=DEFAULT_DISPLAY_CONFIG.vars,
                         help="Display mode for variable/const symbols (default: %(default)s)")
     args = parser.parse_args()
+
+    # Flatten comma-separated exclude patterns so users can write:
+    #   --exclude "*.pyc,*.min.js,tests/*"
+    # instead of repeating --exclude multiple times.
+    flat: list[str] = []
+    for pat in args.exclude:
+        for p in pat.split(","):
+            p = p.strip()
+            if p:  # skip empty strings from trailing commas etc.
+                flat.append(p)
+    args.exclude = flat
 
     if args.version:
         print(f"codetre {VERSION}")
