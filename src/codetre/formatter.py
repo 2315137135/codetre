@@ -17,18 +17,15 @@ class DisplayConfig:
       "count"  — show a summary line:  imports(N) / fields(N) / vars(N)
       "hide"   — omit entirely
 
-    Defaults: imports="show", fields="count", vars="hide".
+    Defaults: imports="count", fields="count", vars="count".
     """
-    imports: str = "show"
-    fields: str = "show"
-    vars: str = "show"
+    imports: str = "count"
+    fields: str = "count"
+    vars: str = "count"
 
 
 # Module-level default — tune here to change default behaviour project-wide.
-DEFAULT_DISPLAY_CONFIG = DisplayConfig(
-    fields="count",
-    vars="hide",
-)
+DEFAULT_DISPLAY_CONFIG = DisplayConfig()
 
 
 def _count_lines(filepath: str) -> int:
